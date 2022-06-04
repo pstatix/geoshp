@@ -1,4 +1,3 @@
-import sys
 import typing
 import geoshp.shp.shapefile as shp
 
@@ -14,15 +13,10 @@ class _Singleton(type):
         return cls._instance
 
 
-if sys.version_info[0] < 3:
-
-    class _ModeFactoryBase(object):
-        __metaclass__ = _Singleton
-
-else:
-
-    class _ModeFactoryBase(metaclass=_Singleton):
-        pass
+# originally a Python 2.7 case existed
+# kept a base class for potential extension
+class _ModeFactoryBase(metaclass=_Singleton):
+    pass
 
 
 class _ModeFactory(_ModeFactoryBase):
