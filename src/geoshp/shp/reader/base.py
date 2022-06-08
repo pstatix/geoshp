@@ -3,7 +3,6 @@ import pathlib
 import struct
 import typing
 
-
 import geoshp.core.types as types
 import geoshp.shp.shapefile as shp
 
@@ -96,12 +95,23 @@ class ShapefileReader(shp.ShapefileInterface, abc.ABC):
     def shape(self, num: int) -> shp.Shape:
 
         if abs(num) > self._num_shapes:
-            # might need to adjust display to be 1-indexed?
-            raise shp.ShapefileException(f'Feature {num} outside range 0->{self._num_shapes}')
+            raise shp.ShapefileException(
+                f'Feature {num} outside range [1, {self._num_shapes}]'
+            )
 
+        # must be sure to include extensive documentation that Esri orders records 1-indexed
         elif num == 0:
-            num = 1  # shape records begin a 1 not 0
+            lim = self._num_shapes
+            raise shp.ShapefileException(
+                f'Only values in the range(s) [1, {lim}] and [-{lim}, -1] supported'
+            )
 
+        # allow backwards access
+        # example:
+        #   self._num_shapes = 100
+        #   num = -2 (i.e. access 2nd to last shape like a list)
+        #   num = (100 - 2) + 1 = 99
+        # total reads required is the same if having compute a seek to the record header
         elif num < 0:
             num = (self._num_shapes + num) + 1
 
