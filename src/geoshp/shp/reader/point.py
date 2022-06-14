@@ -6,7 +6,7 @@ from geoshp.shp import reader
 import geoshp.shp.shapefile as shp
 
 
-class PointShapefileReader(reader.ShapefileReader):
+class PointShapefileReader(reader.NonNullShapefileReader):
 
     def _shape(self, num: int) -> shp.Shape:
 
@@ -16,11 +16,15 @@ class PointShapefileReader(reader.ShapefileReader):
         self._shp.seek(100 + (28 * (num - 1)) + 12)
 
         try:
+            if num in self._nulls:
+                return self._read_null()
             return ...
         except struct.error as err:
             raise shp.ShapefileException(
                 f'Cannot access feature {num} due to invalid byte sequencing'
             ) from err
+        finally:
+            self._shp.seek(0)
 
     def iter_shapes(self) -> typing.Generator[shp.Shape, None, None]:
 

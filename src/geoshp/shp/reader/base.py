@@ -1,4 +1,5 @@
 import abc
+import array
 import pathlib
 import struct
 import typing
@@ -7,7 +8,8 @@ import geoshp.core.types as types
 import geoshp.shp.shapefile as shp
 
 __all__ = [
-    'ShapefileReader'
+    'ShapefileReader',
+    'NonNullShapefileReader'
 ]
 
 
@@ -20,7 +22,7 @@ class _HeaderData(typing.NamedTuple):
 
 
 # declared multiple inheritance to tell PyCharm to stop warning
-class ShapefileReader(shp.ShapefileInterface, abc.ABC):
+class ShapefileReader(shp.ShapefileInterface, metaclass=abc.ABCMeta):
 
     def __init__(self, file: types.FilePath) -> None:
 
@@ -36,22 +38,10 @@ class ShapefileReader(shp.ShapefileInterface, abc.ABC):
         self._shp_path = shpf.resolve().as_posix()
         self._shx_path = shxf.resolve().as_posix()
 
-        try:
-            header_data = self.shp_header(self._shp)
+        self._nulls = set()  # type: typing.Set[int]
 
-            self._file_code = header_data.file_code
-            self._version = header_data.version
-            self._shape_type = header_data.shape_type
-            self._bbox = header_data.bbox
-
-        except struct.error as err:
-            raise shp.ShapefileException(f'Failed to parse header of {self._shp_path}') from err
-
-        finally:
-            self.close()
-
-        self._shx.seek(0, 2)  # move to bottom of file
-        self._num_shapes = (self._shx.tell() - 100) // 8
+        self._load_header_data()
+        self._load_record_data()
 
     def __str__(self) -> str:
 
@@ -72,10 +62,39 @@ class ShapefileReader(shp.ShapefileInterface, abc.ABC):
 
         return self._shape(key)
 
+    def _read_null(self) -> shp.Shape:
+
+        rn = struct.unpack('', self._shp.read(12))[0]
+
+        return shp.Shape(rec_num=rn)
+
     @abc.abstractmethod
     def _shape(self, num: int) -> shp.Shape:
 
         raise NotImplementedError
+
+    def _load_header_data(self) -> None:
+
+        try:
+            header_data = self.shp_header(self._shp)
+
+            self._file_code = header_data.file_code
+            self._version = header_data.version
+            self._shape_type = header_data.shape_type
+            self._bbox = header_data.bbox
+
+        except struct.error as err:
+            # ensure cleanup on error
+            self.close()
+
+            raise shp.ShapefileException(f'Failed to parse header of {self._shp_path}') from err
+
+    def _load_record_data(self) -> None:
+
+        # self._shx.seek(0, 2)  # move to bottom of file
+        # self._num_shapes = (self._shx.tell() - 100) // 8
+
+        self._shx.seek(0)  # explicitly reset
 
     @abc.abstractmethod
     def iter_shapes(self) -> typing.Generator[shp.Shape, None, None]:
@@ -89,6 +108,7 @@ class ShapefileReader(shp.ShapefileInterface, abc.ABC):
         fc = struct.unpack('>i24x', fp.read(28))[0]
         ver, _type = struct.unpack('<2i', fp.read(8))
         bbox = list(struct.unpack('<8d', fp.read(64)))
+        fp.seek(0)  # explicitly reset
 
         return _HeaderData(fc, ver, _type, shp.BoundingBox(*bbox))
 
@@ -129,4 +149,8 @@ class ShapefileReader(shp.ShapefileInterface, abc.ABC):
             self._shx.close()
 
 
+class NonNullShapefileReader(ShapefileReader, metaclass=abc.ABCMeta):
 
+    def __init__(self, *args, **kwargs) -> None:
+
+        super().__init__(*args, **kwargs)
