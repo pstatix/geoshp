@@ -6,8 +6,10 @@ class ShapefileException(Exception):
     pass
 
 
-class Shape:
-    pass
+class Shape(typing.NamedTuple):
+    """Data container for all ShapefileInterface modalities"""
+    rec_num: int
+    form: list = []  # default to empty list for NullShapeType
 
 
 class BoundingBox(typing.NamedTuple):
@@ -39,6 +41,7 @@ class ShapefileInterface(abc.ABC):
         self._shx_path = None       # type: typing.Optional[str]
         self._shp = None            # type: typing.Optional[typing.BinaryIO]
         self._shx = None            # type: typing.Optional[typing.BinaryIO]
+        self._has_nulls = False     # type: bool
 
     def __enter__(self) -> 'ShapefileInterface':
 
@@ -55,6 +58,10 @@ class ShapefileInterface(abc.ABC):
 
         if shp or shx:
             self.close()
+
+    def __len__(self) -> int:
+
+        return self._num_shapes
 
     @abc.abstractmethod
     def close(self) -> None:
@@ -79,6 +86,11 @@ class ShapefileInterface(abc.ABC):
     def shx(self) -> str:
 
         return self._shx_path if self._shx_path is not None else None
+
+    @property
+    def has_nulls(self) -> bool:
+
+        return self._has_nulls
 
     @property
     def closed(self) -> bool:
