@@ -9,7 +9,8 @@ class _Singleton(type):
 
     def __call__(cls: _S, *args, **kwargs) -> _S:
         if cls._instance is None:
-            cls._instance = super(_Singleton, cls).__call__(*args, **kwargs)
+            # cls._instance = super(_Singleton, cls).__call__(*args, **kwargs)
+            cls._instance = super().__call__(*args, **kwargs)
         return cls._instance
 
 
