@@ -30,7 +30,7 @@ class BoundingBox(typing.NamedTuple):
 
 class ShapefileInterface(abc.ABC):
 
-    def __init__(self) -> None:
+    def __init__(self, *args, **kwargs) -> None:
 
         self._file_code = 0         # type: int
         self._version = 0           # type: int
@@ -101,5 +101,3 @@ class ShapefileInterface(abc.ABC):
         if shp and shx:
             return self._shp.closed and self._shx.closed
         return False
-
-
