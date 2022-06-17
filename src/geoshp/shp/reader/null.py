@@ -39,20 +39,22 @@ class NullShapefileReader(reader.ShapefileReader):
     def iter_shapes(self) -> typing.Generator[shp.Shape, None, None]:
 
         # skip: header
-        self._shp.seek(100)
+        # self._shp.seek(100)
+        #
+        # feature = 1
+        # chunk = self._shp.read(28)
+        # while chunk:
+        #     try:
+        #         yield ...
+        #     except struct.error as err:
+        #         raise shp.ShapefileException(
+        #             f'Cannot access feature {feature} due to invalid byte sequencing'
+        #         ) from err
+        #     else:
+        #         chunk = self._shp.read(28)
+        #         feature += 1
 
-        feature = 1
-        chunk = self._shp.read(28)
-        while chunk:
-            try:
-                yield ...
-            except struct.error as err:
-                raise shp.ShapefileException(
-                    f'Cannot access feature {feature} due to invalid byte sequencing'
-                ) from err
-            else:
-                chunk = self._shp.read(28)
-                feature += 1
+        pass
 
 
 factory.register_mode('read', 0, NullShapefileReader)

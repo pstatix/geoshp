@@ -9,7 +9,8 @@ import geoshp.shp.shapefile as shp
 
 __all__ = [
     'ShapefileReader',
-    'NonNullShapefileReader'
+    'FixedFeatureShapefileReader',
+    'DynamicFeatureShapefileReader'
 ]
 
 
@@ -24,10 +25,11 @@ class _HeaderData(typing.NamedTuple):
 # declared multiple inheritance to tell PyCharm to stop warning
 class ShapefileReader(shp.ShapefileInterface, metaclass=abc.ABCMeta):
 
-    def __init__(self, file: types.FilePath) -> None:
+    def __init__(self, file: types.FilePath, *args, **kwargs) -> None:
 
-        super().__init__()
+        super().__init__(*args, **kwargs)
 
+        # even if a pathlib.Path object is passed in, copy it
         file = pathlib.Path(file)
         shpf = file.with_suffix('.shp')
         shxf = file.with_suffix('.shx')
@@ -38,7 +40,8 @@ class ShapefileReader(shp.ShapefileInterface, metaclass=abc.ABCMeta):
         self._shp_path = shpf.resolve().as_posix()
         self._shx_path = shxf.resolve().as_posix()
 
-        self._nulls = set()  # type: typing.Set[int]
+        self._nulls = set()     # type: typing.Set[int]
+        self._lengths = []      # type: typing.List[int]
 
         self._load_header_data()
         self._load_record_data()
@@ -58,20 +61,31 @@ class ShapefileReader(shp.ShapefileInterface, metaclass=abc.ABCMeta):
 
         return f'{type(self).__name__}(file={self._shp_path})'
 
-    def __getitem__(self, key: int) -> shp.Shape:
+    def __getitem__(self,
+                    key: typing.Union[int, types.Slice]
+                    ) -> typing.Union[shp.Shape, typing.List[shp.Shape]]:
 
-        return self._shape(key)
+        try:
+            start = key.start
+            stop = key.stop
+            step = key.step
+
+            self._check_index(start, stop)
+
+        except AttributeError:
+
+            self._check_index(key)
+
+            return self._shape(key)
+
+        else:
+            return list(self.iter_shapes(start, stop, step))
 
     def _read_null(self) -> shp.Shape:
 
         rn = struct.unpack('', self._shp.read(12))[0]
 
         return shp.Shape(rec_num=rn)
-
-    @abc.abstractmethod
-    def _shape(self, num: int) -> shp.Shape:
-
-        raise NotImplementedError
 
     def _load_header_data(self) -> None:
 
@@ -87,17 +101,47 @@ class ShapefileReader(shp.ShapefileInterface, metaclass=abc.ABCMeta):
             # ensure cleanup on error
             self.close()
 
-            raise shp.ShapefileException(f'Failed to parse header of {self._shp_path}') from err
+            raise shp.ShapefileException(
+                f'Failed to parse header of {self._shp_path}'
+            ) from err
 
     def _load_record_data(self) -> None:
 
-        # self._shx.seek(0, 2)  # move to bottom of file
-        # self._num_shapes = (self._shx.tell() - 100) // 8
-
+        # get the count of features
         self._shx.seek(0)  # explicitly reset
+        self._shx.seek(0, 2)  # move to bottom of file
+        self._num_shapes = (self._shx.tell() - 100) // 8
+
+        # reset head
+        self._shx.seek(0)
+        self._shx.seek(100)
+
+        # low-memory footprint read of data
+        data = array.array('l')
+        data.fromfile(self._shx, self._num_shapes * 2)
+        data.byteswap()
+
+        # get just the offset
+        # self._lengths = data[0::2]
+
+        # NULL features will have a total content length of 2 16-bit words
+        # the i + 1 is because files are 1-indexed
+        self._nulls = {i + 1 for i, cl in enumerate(data[::2]) if cl == 2}
+
+        if self._nulls:
+            self._has_nulls = True
 
     @abc.abstractmethod
-    def iter_shapes(self) -> typing.Generator[shp.Shape, None, None]:
+    def _shape(self, num: int) -> shp.Shape:
+
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def iter_shapes(self,
+                    start: typing.Optional[int] = None,
+                    stop: typing.Optional[int] = None,
+                    step: typing.Optional[int] = None
+                    ) -> typing.Generator[shp.Shape, None, None]:
 
         raise NotImplementedError
 
@@ -114,18 +158,11 @@ class ShapefileReader(shp.ShapefileInterface, metaclass=abc.ABCMeta):
 
     def shape(self, num: int) -> shp.Shape:
 
-        if abs(num) > self._num_shapes:
-            raise shp.ShapefileException(
-                f'Feature {num} outside range [1, {self._num_shapes}]'
-            )
+        # shift right to allow Python 0-indexing
+        if num >= 0:
+            num += 1
 
-        # must be sure to include extensive documentation that Esri orders records 1-indexed
-        elif num == 0:
-            lim = self._num_shapes
-            raise shp.ShapefileException(
-                f'Only values in the range(s) [1, {lim}] and [-{lim}, -1] supported'
-            )
-
+        # shifting not required when below 0
         # allow backwards access
         # example:
         #   self._num_shapes = 100
@@ -135,7 +172,8 @@ class ShapefileReader(shp.ShapefileInterface, metaclass=abc.ABCMeta):
         elif num < 0:
             num = (self._num_shapes + num) + 1
 
-        return self._shape(num)  # need to check if indexing is correct
+        # take advantage of the __getitem__ implementation
+        return self[num]
 
     def close(self) -> None:
 
@@ -149,8 +187,29 @@ class ShapefileReader(shp.ShapefileInterface, metaclass=abc.ABCMeta):
             self._shx.close()
 
 
+# the Esri specification allows Shapefiles to contain NULL types and base types
+# so all of these cases are NonNull by default but need required methods to
+# ensure they can parse the next record if it is a NULL
 class NonNullShapefileReader(ShapefileReader, metaclass=abc.ABCMeta):
 
     def __init__(self, *args, **kwargs) -> None:
 
         super().__init__(*args, **kwargs)
+
+
+class FixedFeatureShapefileReader(NonNullShapefileReader, metaclass=abc.ABCMeta):
+
+    pass
+
+
+class DynamicFeatureShapefileReader(NonNullShapefileReader, metaclass=abc.ABCMeta):
+
+    def _shape(self, num: int) -> shp.Shape:
+        pass
+
+    def iter_shapes(self,
+                    start: typing.Optional[int] = None,
+                    stop: typing.Optional[int] = None,
+                    step: typing.Optional[int] = None
+                    ) -> typing.Generator[shp.Shape, None, None]:
+        pass

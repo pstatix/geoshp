@@ -63,6 +63,39 @@ class ShapefileInterface(abc.ABC):
 
         return self._num_shapes
 
+    def _check_index(self,
+                     start: typing.Optional[int] = None,
+                     stop: typing.Optional[int] = None
+                     ) -> None:
+
+        limit = self._num_shapes
+
+        if start is not None:
+            st = abs(start)
+
+            if st > limit:
+                raise ShapefileException(
+                    f'Start feature {start}'
+                )
+
+
+
+            if start == 0:
+                raise ShapefileException(
+                    f'Only values in the range(s) [1, {limit}] and [-{limit}, -1] supported'
+                )
+
+
+        if start and start:
+            pass
+
+        if stop:
+
+            if abs(stop) > limit:
+                raise ShapefileException(
+                    f'End index of {stop} outside bounds of [-{limit}, {limit}]'
+                )
+
     @abc.abstractmethod
     def close(self) -> None:
         raise NotImplementedError

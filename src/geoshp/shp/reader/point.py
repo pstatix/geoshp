@@ -6,7 +6,7 @@ from geoshp.shp import reader
 import geoshp.shp.shapefile as shp
 
 
-class PointShapefileReader(reader.NonNullShapefileReader):
+class PointShapefileReader(reader.FixedFeatureShapefileReader):
 
     def _shape(self, num: int) -> shp.Shape:
 
@@ -26,12 +26,26 @@ class PointShapefileReader(reader.NonNullShapefileReader):
         finally:
             self._shp.seek(0)
 
-    def iter_shapes(self) -> typing.Generator[shp.Shape, None, None]:
+    def iter_shapes(self,
+                    start: typing.Optional[int] = None,
+                    stop: typing.Optional[int] = None,
+                    step: typing.Optional[int] = None
+                    ) -> typing.Generator[shp.Shape, None, None]:
+
+        if not start:
+            start = 1
+        elif start
+
+        if not stop:
+            stop = self._num_shapes
+
+        if not step:
+            step = 1
 
         # skip: header
         self._shp.seek(100)
 
-        feature = 1
+        feature = start
         chunk = self._shp.read(28)
         while chunk:
             try:
